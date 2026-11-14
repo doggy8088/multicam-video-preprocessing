@@ -518,6 +518,29 @@
       background: var(--bg-elevated);
     }
 
+    /* FAQ */
+    .faq-body h4 {
+      margin: 18px 0 8px;
+      font-size: 15px;
+      color: var(--text);
+      font-weight: 700;
+    }
+    .faq-body p {
+      margin: 8px 0;
+      line-height: 1.7;
+    }
+    .faq-body ol, .faq-body ul {
+      margin: 8px 0 12px;
+      padding-left: 22px;
+      line-height: 1.7;
+    }
+    .faq-body li { margin-bottom: 6px; }
+    .faq-body hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 18px 0;
+    }
+
     @media (max-width: 960px) {
       .layout { grid-template-columns: 1fr; }
       aside.toc { position: static; max-height: none; margin-bottom: 16px; }
@@ -552,6 +575,7 @@
         <li><a href="#sec-segmentation">6. 長片智慧分段：靜音偵測與 RMS 波谷</a></li>
         <li><a href="#sec-multimodal">7. Gemini 3.8 Flash 如何「聽懂」單軌混音</a></li>
         <li><a href="#sec-takeaways">8. 你可以從這個專案學到的工程模式</a></li>
+        <li><a href="#sec-faq">9. 常見問題 FAQ</a></li>
       </ul>
     </aside>
 
@@ -918,6 +942,107 @@
           </button>
           <div class="accordion-body">
             透過 <code>rules/AGENTS.md</code> 明確禁止 Agent「自行撰寫臨時腳本」或「竄改 Skill 原始碼」，並強制要求 60 秒長任務回報進度與 Exit Gate 檔案檢查，這是目前建構生產級 AI Coding Skill 最穩健的範本之一。
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 9: FAQ -->
+      <section id="sec-faq">
+        <div class="sec-header">
+          <span class="sec-num">Section 09 · FAQ</span>
+          <h2>常見問題 FAQ</h2>
+        </div>
+
+        <div class="accordion-item open">
+          <button class="accordion-btn" type="button">
+            <span>Q1：兩個不同機位的影片錄音品質、音量大小都不一樣，系統是用什麼技術去分析並對齊聲音的？</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body faq-body">
+            <div class="callout" style="margin-top: 4px;">
+              <div class="callout-title">結論先講</div>
+              <strong>同步不是拿兩條原始波形直接比對，而是在「特徵域」做互相關（Cross-Correlation，類似在兩段訊號間滑動尋找最吻合的位置）</strong>。不同機位的音量大小、頻響、底噪差異，是靠<strong>訊號預處理 + 倒譜正規化</strong>在比對前就先消掉；至於整體音量不一致的問題，則是<strong>同步完成後</strong>才由另一個模組做響度標準化。兩件事是分開處理的。
+            </div>
+
+            <h4>一、為什麼不能直接比對原始波形？</h4>
+            <p>如果把兩台相機錄到的聲音波形直接疊在一起比對，往往會對不上，因為不同機位的錄音會遇到這些破壞波形相似度的因素：</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>干擾來源</th>
+                    <th>白話解釋與對波形的影響</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>麥克風距離不同</strong></td>
+                    <td>離講者較遠的機位會錄到更多牆壁反射音（空間殘響），讓聲波的相位與形狀整個扭曲。</td>
+                  </tr>
+                  <tr>
+                    <td><strong>增益／錄音音量不同</strong></td>
+                    <td>兩台相機的收音靈敏度不同，波形振幅會整體放大或縮小。</td>
+                  </tr>
+                  <tr>
+                    <td><strong>空調、風扇低頻噪音</strong></td>
+                    <td>會在訊號上疊加持續的直流偏移（基準線飄移）與低頻隆隆聲。</td>
+                  </tr>
+                  <tr>
+                    <td><strong>各機頻響曲線不同</strong></td>
+                    <td>不同麥克風對高、中、低音的敏感度不同，導致頻譜輪廓（包絡）長得不一樣。</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>因此系統改用 <strong>MFCC（梅爾倒譜特徵）</strong>：它不看細碎的原始波形上下震盪，而是抽取「人耳對聲音頻譜輪廓的感知特徵」（例如母音、子音的音色結構），對空間殘響與音量增益差異的抗性極強。</p>
+
+            <h4>二、比對前的四道預處理（<code>load_and_preprocess_audio</code>）</h4>
+            <p>在計算 MFCC 之前，程式會依序對音訊做四步清理，每一步都對應一種干擾：</p>
+            <ol>
+              <li><strong>降取樣至 8 kHz 單聲道 PCM</strong> — 減少 97.7% 記憶體用量，同時完整保留人聲最關鍵的頻段（&le; 4 kHz）。</li>
+              <li><strong>Zero-mean 去直流偏移（<code>raw - np.mean(raw)</code>）</strong> — 把整段訊號的平均值歸零，消除硬體電路或環境帶來的基準線偏移。</li>
+              <li><strong>一階高通差分（<code>np.diff</code>）</strong> — 計算相鄰取樣點的差值，等於濾掉緩慢變化的冷氣／風扇低頻噪音，同時放大語音子音與「拍手打板」這類瞬間變化的特徵（這正是時間對齊最準確的錨點）。</li>
+              <li><strong>Z-score 能量標準化（除以標準差）</strong> — 把訊號振幅拉到相同尺度，<strong>這一步就直接消掉了兩台相機的錄音音量差距</strong>。</li>
+            </ol>
+
+            <h4>三、MFCC 特徵的「音量免疫」設計</h4>
+            <ul>
+              <li>計算 26-band Mel Filterbank &rarr; 離散餘弦轉換（DCT-II）。</li>
+              <li><strong>刻意丟棄 <code>c0</code>（能量係數）</strong>，只取 <code>c1..c12</code>。</li>
+              <li>再做 <strong>CMVN（倒譜均值與變異數正規化）</strong>，消除各機位麥克風的固定音色偏差。</li>
+            </ul>
+            <div class="callout green">
+              <div class="callout-title">關鍵設計：為什麼錄音品質不同也能對齊？</div>
+              <strong><code>c0</code> 代表的就是這段聲音的「整體響度」資訊；丟掉 <code>c0</code> 再加上 CMVN 之後，比對結果在數學上就完全不受音量大小影響。</strong> 這就是為什麼兩台設備音量與收音品質不同，依然能精準對齊的核心原因。
+            </div>
+
+            <h4>四、實際怎麼找出時間偏移量？</h4>
+            <ol>
+              <li><strong>3-Tier 階梯掃描</strong>：先用 120 秒片段快速估算（Tier 1: Fast）&rarr; 若信心度不足再擴大為全長（Tier 2: Full）&rarr; 最後才動用原始解析度（Tier 3: Raw），逐級精修，避免長影片一次吃爆記憶體。</li>
+              <li><strong>FFT 加速互相關</strong>：透過 1D 快速傅立葉轉換（FFT）把互相關計算壓到 <code>O(N log N)</code>，並快取參考機位的 FFT 結果（<code>f_ref_cache</code>）讓所有目標機位共用。</li>
+              <li><strong>次影格微調（<code>refine_offset_subframe</code>）</strong>：MFCC 的 <code>hop_length = 128</code>（在 8 kHz 下每幀約 16 ms），這對影音剪輯還不夠細，誤差可能達半幀。因此取得粗略偏移後，系統會用累積平方和（<code>cumsum</code>）找出<strong>全片能量最高、人聲最清晰的 5 秒片段</strong>，回到時域對原始高通波形在 <strong>&plusmn;256 samples（&plusmn;32 ms）</strong> 範圍內做 <code>np.correlate(..., mode="valid")</code>，把精度推進到單一取樣點 <strong>1/8000 秒 = 0.125 ms</strong>。</li>
+              <li><strong>信心度評估</strong>：以互相關峰值的 Z-Score 判定可靠性（本頁模擬器中以 <code>Z &ge; 12.0</code> 作為高信心門檻）；若信心不足，會自動觸發下一層級的掃描。</li>
+            </ol>
+
+            <h4>五、那「聲音大小不一樣」的問題呢？</h4>
+            <p><strong>這不歸同步階段處理，而是在對齊完成後，由 <code>audio_normalizer.py</code> 解決</strong>：採用 <strong>Two-Pass 線性增益（<code>linear=true</code>）</strong> 將所有機位統一標準化到 <strong>-14.0 LUFS</strong>（LRA = 11.0、TP = -1.5 dBTP）。</p>
+            <ul>
+              <li><strong>Pass 1（量測）</strong>：透過 FFmpeg Null-Sink 空跑掃描，取得全片真實聲學統計值（<code>input_i</code>、<code>input_lra</code>、<code>input_tp</code> 等）。</li>
+              <li><strong>Pass 2（套用）</strong>：套用<strong>恆定線性增益</strong>把整軌音量平移到目標響度，完整保留人聲強弱動態。</li>
+              <li><strong>為什麼不用單階段動態 <code>loudnorm</code>？</strong> 單階段動態壓縮會在安靜片段把環境底噪拉大、講話時又壓縮音量，產生不自然的「呼吸效應（Pumping Artifact）」。</li>
+            </ul>
+
+            <hr />
+
+            <h4>流程總覽</h4>
+            <pre><code>兩段不同機位音訊
+  → 8kHz 降取樣 / Zero-mean / np.diff / Z-score（消除音量・底噪差）
+  → MFCC（丟 c0 + CMVN，消除增益・頻響差）
+  → 3-Tier FFT 互相關（找粗略偏移）
+  → 時域次影格微調（精度 0.125 ms）
+  → 各機位切齊、輸出 *_synced.mp4
+  → Two-Pass 線性 loudnorm 統一到 -14 LUFS（解決音量不一致）</code></pre>
+            <p><strong>一句話總結：音量與錄音品質的差異在「特徵正規化」階段被數學上中和掉，所以不影響對齊；對齊完成後再用線性增益把響度統一，兩者各司其職、互不干擾。</strong></p>
           </div>
         </div>
       </section>
