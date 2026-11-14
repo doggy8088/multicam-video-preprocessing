@@ -1,0 +1,31 @@
+{
+  "name": "Multicam Video Preprocessing 架構與音訊原理剖析",
+  "short_name": "Multicam Guide",
+  "description": "2–6 機位自動化管線技術解析：MFCC 聲學時間對齊 (<0.125ms)、EBU R128 兩階段響度標準化 (-14 LUFS)、長片靜音感知分段與 Gemini 3.8 Flash 多模態粗剪。",
+  "start_url": "/multicam-video-preprocessing/multicam_architecture_guide.html",
+  "scope": "/multicam-video-preprocessing/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

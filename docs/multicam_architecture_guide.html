@@ -4,6 +4,67 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Multicam Video Preprocessing — 原理、音訊理解機制與架構深度解析</title>
+  <meta name="description" content="專為 2–6 機位設計的多機位影音前處理與 AI 粗剪套件深度解析：涵蓋 MFCC 聲學時間對齊（&lt;0.125 ms）、EBU R128 兩階段線性響度標準化（-14 LUFS）、長片靜音感知分段與 Gemini 3.8 Flash 多模態粗剪架構。" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0b0f17" />
+  <link rel="canonical" href="https://doggy8088.github.io/multicam-video-preprocessing/multicam_architecture_guide.html" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Multicam Video Preprocessing" />
+  <meta property="og:locale" content="zh_TW" />
+  <meta property="og:title" content="Multicam Video Preprocessing — 原理、音訊理解機制與架構深度解析" />
+  <meta property="og:description" content="2–6 機位自動化剪輯前處理管線全解析：MFCC 次影格同步（&lt;0.125 ms）、EBU R128 兩階段標準化（-14 LUFS）、靜音感知分段與 Gemini 3.8 Flash 多模態粗剪。" />
+  <meta property="og:url" content="https://doggy8088.github.io/multicam-video-preprocessing/multicam_architecture_guide.html" />
+  <meta property="og:image" content="https://doggy8088.github.io/multicam-video-preprocessing/og-card.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Multicam Video Preprocessing 架構與音訊原理剖析：MFCC 次影格對齊、EBU R128 Two-Pass (-14 LUFS)、Gemini 3.8 Flash 多模態粗剪與 FCP7 XML" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Multicam Video Preprocessing — 原理、音訊理解機制與架構深度解析" />
+  <meta name="twitter:description" content="2–6 機位自動化剪輯前處理管線全解析：MFCC 次影格同步（&lt;0.125 ms）、EBU R128 兩階段標準化（-14 LUFS）、靜音感知分段與 Gemini 3.8 Flash 多模態粗剪。" />
+  <meta name="twitter:image" content="https://doggy8088.github.io/multicam-video-preprocessing/og-card.png" />
+  <meta name="twitter:image:alt" content="Multicam Video Preprocessing 架構與音訊原理剖析" />
+
+  <!-- Favicons & Web Manifest -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Multicam Video Preprocessing — 原理、音訊理解機制與架構深度解析",
+      "description": "專為 2–6 機位設計的多機位影音前處理與 AI 粗剪套件深度解析：涵蓋 MFCC 聲學時間對齊 (<0.125 ms)、EBU R128 兩階段線性響度標準化 (-14 LUFS)、長片靜音感知分段與 Gemini 3.8 Flash 多模態粗剪架構。",
+      "url": "https://doggy8088.github.io/multicam-video-preprocessing/multicam_architecture_guide.html",
+      "image": "https://doggy8088.github.io/multicam-video-preprocessing/og-card.png",
+      "inLanguage": "zh-TW",
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/licenses/MIT",
+      "author": {
+        "@type": "Person",
+        "name": "sylphlin",
+        "url": "https://github.com/sylphlin"
+      },
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "multicam-video-preprocessing",
+        "softwareVersion": "1.7.0",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "macOS, Linux",
+        "url": "https://github.com/sylphlin/multicam-video-preprocessing"
+      }
+    }
+  </script>
   <style>
     :root {
       --bg: #0b0f17;
@@ -1046,6 +1107,11 @@
           </div>
         </div>
       </section>
+
+      <footer style="margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-dim); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;">
+        <span>© 2026 <a href="https://github.com/sylphlin" target="_blank" rel="noopener noreferrer">sylphlin</a> · MIT License</span>
+        <span>GitHub Pages: <a href="https://github.com/doggy8088/multicam-video-preprocessing" target="_blank" rel="noopener noreferrer">doggy8088/multicam-video-preprocessing</a></span>
+      </footer>
     </main>
   </div>
 
