@@ -36,6 +36,11 @@
 ### 安裝
 
 ```bash
+# 建議：透過 Antigravity CLI 安裝
+git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+agy plugin install ./multicam-video-preprocessing
+
+# 或手動複製至全域 Plugin 目錄
 git clone https://github.com/sylphlin/multicam-video-preprocessing.git \
   ~/.gemini/config/plugins/multicam-video-preprocessing
 

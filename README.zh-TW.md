@@ -20,7 +20,13 @@
 
 ### 1. 安裝為 Antigravity Plugin 或 Skill
 
-- **全域 Plugin（建議）**：
+- **透過 Antigravity CLI 安裝（`agy plugin install`，建議）**：
+  先複製儲存庫，再使用 `agy` 指令安裝：
+  ```bash
+  git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+  agy plugin install ./multicam-video-preprocessing
+  ```
+- **手動安裝至全域 Plugin 目錄（`~/.gemini/config/plugins/`）**：
   ```bash
   git clone https://github.com/sylphlin/multicam-video-preprocessing.git ~/.gemini/config/plugins/multicam-video-preprocessing
   ```

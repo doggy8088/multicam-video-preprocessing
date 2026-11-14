@@ -19,10 +19,14 @@
 本プロジェクトは [Agent Plugins 1.0](https://agent-plugins.org/) に準拠し、**Google Cloud Vertex AI (ADC)** と **Cloud Storage (GCS)** 上で動作します（API キー管理不要）。
 
 ```bash
-# 1a. グローバル Antigravity Plugin としてクローン（推奨）
+# 1a. Antigravity CLI 経由でインストール（推奨）
+git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+agy plugin install ./multicam-video-preprocessing
+
+# 1b. またはグローバル Antigravity Plugin ディレクトリへ手動クローン
 git clone https://github.com/sylphlin/multicam-video-preprocessing.git ~/.gemini/config/plugins/multicam-video-preprocessing
 
-# 1b. 旧来の単一 Skill ディレクトリへのインストール（任意：skills/multicam-video-preprocessing をシンボリックリンク）
+# 1c. 旧来の単一 Skill ディレクトリへのインストール（任意：skills/multicam-video-preprocessing をシンボリックリンク）
 ln -s ~/.gemini/config/plugins/multicam-video-preprocessing/skills/multicam-video-preprocessing ~/.gemini/config/skills/multicam-video-preprocessing
 
 # 2. 依存パッケージのインストールと ADC 認証

@@ -20,7 +20,13 @@ This project complies with [Agent Plugins 1.0](https://agent-plugins.org/) and r
 
 ### 1. Install as an Antigravity Plugin or Skill
 
-- **Global Plugin (Recommended)**:
+- **Via Antigravity CLI (`agy plugin install`, Recommended)**:
+  Clone the repository and install it with `agy`:
+  ```bash
+  git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+  agy plugin install ./multicam-video-preprocessing
+  ```
+- **Manual Global Plugin (`~/.gemini/config/plugins/`)**:
   ```bash
   git clone https://github.com/sylphlin/multicam-video-preprocessing.git ~/.gemini/config/plugins/multicam-video-preprocessing
   ```

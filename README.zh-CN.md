@@ -19,10 +19,14 @@
 本项目遵循 [Agent Plugins 1.0](https://agent-plugins.org/) 规范，完全基于 **Google Cloud Vertex AI (ADC)** 与 **Cloud Storage (GCS)** 运行，无需 API Key。
 
 ```bash
-# 1a. 安装为全局 Antigravity Plugin（推荐）
+# 1a. 通过 Antigravity CLI 安装（推荐）
+git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+agy plugin install ./multicam-video-preprocessing
+
+# 1b. 或手动克隆至全局 Antigravity Plugin 目录
 git clone https://github.com/sylphlin/multicam-video-preprocessing.git ~/.gemini/config/plugins/multicam-video-preprocessing
 
-# 1b. 旧版单一 Skill 安装（可选：将内部 skills/multicam-video-preprocessing 链接至 ~/.gemini/config/skills/）
+# 1c. 旧版单一 Skill 安装（可选：将内部 skills/multicam-video-preprocessing 链接至 ~/.gemini/config/skills/）
 ln -s ~/.gemini/config/plugins/multicam-video-preprocessing/skills/multicam-video-preprocessing ~/.gemini/config/skills/multicam-video-preprocessing
 
 # 2. 安装依赖与授权 ADC

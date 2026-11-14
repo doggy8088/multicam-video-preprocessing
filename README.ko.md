@@ -19,10 +19,14 @@
 본 프로젝트는 [Agent Plugins 1.0](https://agent-plugins.org/) 표준을 준수하며 **Google Cloud Vertex AI (ADC)** 및 **Cloud Storage (GCS)** 기반으로 동작합니다.
 
 ```bash
-# 1a. 글로벌 Antigravity Plugin으로 클론 (권장)
+# 1a. Antigravity CLI로 설치 (권장)
+git clone https://github.com/sylphlin/multicam-video-preprocessing.git
+agy plugin install ./multicam-video-preprocessing
+
+# 1b. 또는 글로벌 Antigravity Plugin 디렉터리로 수동 클론
 git clone https://github.com/sylphlin/multicam-video-preprocessing.git ~/.gemini/config/plugins/multicam-video-preprocessing
 
-# 1b. 레거시 단일 Skill 디렉터리 설치 (선택 사항: 내부 skills/multicam-video-preprocessing 심볼릭 링크 연결)
+# 1c. 레거시 단일 Skill 디렉터리 설치 (선택 사항: 내부 skills/multicam-video-preprocessing 심볼릭 링크 연결)
 ln -s ~/.gemini/config/plugins/multicam-video-preprocessing/skills/multicam-video-preprocessing ~/.gemini/config/skills/multicam-video-preprocessing
 
 # 2. 의존성 설치 및 ADC 인증
