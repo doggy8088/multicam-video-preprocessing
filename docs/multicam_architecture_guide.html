@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multicam Video Preprocessing — 原理、音訊理解機制與架構深度解析</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --bg-elevated: #121826;
+      --bg-card: #161e2e;
+      --bg-code: #0d131f;
+      --border: #243047;
+      --border-strong: #344563;
+      --text: #e6edf7;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --accent-2: #818cf8;
+      --accent-2-soft: rgba(129, 140, 248, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.14);
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      --radius: 14px;
+      --radius-sm: 8px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-elevated: #ffffff;
+      --bg-card: #ffffff;
+      --bg-code: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --accent: #0284c7;
+      --accent-soft: rgba(2, 132, 199, 0.1);
+      --accent-2: #4f46e5;
+      --accent-2-soft: rgba(79, 70, 229, 0.1);
+      --green: #059669;
+      --green-soft: rgba(5, 150, 105, 0.1);
+      --amber: #d97706;
+      --amber-soft: rgba(217, 119, 6, 0.1);
+      --red: #dc2626;
+      --red-soft: rgba(220, 38, 38, 0.1);
+      --shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Reading Progress */
+    #progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--green));
+      z-index: 1000;
+      transition: width 0.1s ease-out;
+    }
+
+    /* Top Header */
+    header.topbar {
+      position: sticky;
+      top: 0;
+      z-index: 900;
+      backdrop-filter: blur(14px);
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-ghost {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Layout */
+    .layout {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 36px;
+      padding: 32px 24px 96px;
+    }
+
+    /* Sidebar TOC */
+    aside.toc {
+      position: sticky;
+      top: 76px;
+      align-self: start;
+      max-height: calc(100vh - 96px);
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    .toc-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      padding-left: 12px;
+    }
+    .toc-list {
+      list-style: none;
+      border-left: 1px solid var(--border);
+    }
+    .toc-list a {
+      display: block;
+      padding: 7px 14px;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      margin-left: -1px;
+      transition: all 0.15s ease;
+    }
+    .toc-list a:hover { color: var(--text); }
+    .toc-list a.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: var(--accent-soft);
+      font-weight: 600;
+      border-radius: 0 6px 6px 0;
+    }
+
+    /* Main Content */
+    main { min-width: 0; }
+    section {
+      margin-bottom: 64px;
+      scroll-margin-top: 84px;
+    }
+
+    /* Hero */
+    .hero {
+      background: radial-gradient(circle at top right, var(--accent-soft), transparent 55%),
+                  radial-gradient(circle at bottom left, var(--accent-2-soft), transparent 50%),
+                  var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 36px;
+      box-shadow: var(--shadow);
+      margin-bottom: 48px;
+    }
+    .hero-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 10px;
+      display: inline-block;
+    }
+    .hero h1 {
+      font-size: clamp(26px, 3.2vw, 38px);
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin-bottom: 14px;
+    }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 16.5px;
+      max-width: 780px;
+      margin-bottom: 24px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 14px;
+    }
+    .kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .kpi-val {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .kpi-label {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Section Headings */
+    .sec-header {
+      margin-bottom: 22px;
+    }
+    .sec-num {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h2 {
+      font-size: 26px;
+      letter-spacing: -0.015em;
+      margin-top: 4px;
+    }
+    h3 {
+      font-size: 19px;
+      margin: 24px 0 10px;
+    }
+    p + p { margin-top: 12px; }
+
+    /* Cards & Grids */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+    }
+    .card + .card { margin-top: 18px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+    }
+
+    /* Callout */
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 16px 20px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      margin: 18px 0;
+    }
+    .callout.green { border-left-color: var(--green); background: var(--green-soft); }
+    .callout.amber { border-left-color: var(--amber); background: var(--amber-soft); }
+    .callout-title {
+      font-weight: 700;
+      font-size: 14.5px;
+      margin-bottom: 4px;
+    }
+
+    /* Code */
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: var(--accent);
+    }
+    pre {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      overflow-x: auto;
+      color: var(--text);
+      margin: 14px 0;
+    }
+
+    /* Interactive Stage Pipeline */
+    .pipeline-flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .pipe-node {
+      flex: 1 1 170px;
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+      transition: all 0.18s ease;
+    }
+    .pipe-node:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .pipe-node.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+    }
+    .pipe-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .pipe-title { font-weight: 700; font-size: 15px; margin-top: 2px; }
+    .pipe-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .pipe-arrow { color: var(--text-dim); font-weight: 700; font-size: 18px; }
+
+    .detail-panel {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 22px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover { color: var(--text); border-color: var(--border-strong); }
+    .tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0b0f17;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Interactive Simulators */
+    .sim-controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .control-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .control-group span.val {
+      font-family: var(--font-mono);
+      color: var(--accent);
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    canvas.sim-canvas {
+      width: 100%;
+      height: 240px;
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: block;
+    }
+    .sim-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .metric-box .m-label { font-size: 12px; color: var(--text-muted); }
+    .metric-box .m-val { font-family: var(--font-mono); font-size: 17px; font-weight: 700; margin-top: 2px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+    }
+    .badge.high { background: var(--green-soft); color: var(--green); }
+    .badge.med { background: var(--amber-soft); color: var(--amber); }
+    .badge.low { background: var(--red-soft); color: var(--red); }
+
+    /* Accordion */
+    .accordion-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-card);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .accordion-btn {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      padding: 16px 20px;
+      text-align: left;
+      font-size: 15.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .accordion-btn:hover { background: var(--bg-elevated); }
+    .accordion-body {
+      display: none;
+      padding: 0 20px 18px;
+      color: var(--text-muted);
+      font-size: 14.5px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .accordion-item.open .accordion-body { display: block; }
+    .accordion-item.open .acc-icon { transform: rotate(180deg); }
+    .acc-icon { transition: transform 0.2s ease; color: var(--text-dim); }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; margin: 14px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      background: var(--bg-elevated);
+    }
+
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      aside.toc { position: static; max-height: none; margin-bottom: 16px; }
+      .pipe-arrow { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="progress-bar"></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span>multicam-video-preprocessing</span>
+        <span class="brand-badge">v1.7.0 · 架構與音訊原理剖析</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-ghost" id="theme-toggle" type="button">切換淺色 / 深色主題</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="toc">
+      <div class="toc-title">目錄導覽</div>
+      <ul class="toc-list" id="toc-list">
+        <li><a href="#sec-overview" class="active">1. 專案總覽與核心設計哲學</a></li>
+        <li><a href="#sec-skill-routing">2. Agent 如何知道該用此 Skill？</a></li>
+        <li><a href="#sec-pipeline">3. 互動式三階段管線探索</a></li>
+        <li><a href="#sec-audio-sync">4. 音訊對齊原理：MFCC + 次影格微調</a></li>
+        <li><a href="#sec-loudnorm">5. 音訊響度：EBU R128 兩階段線性標準化</a></li>
+        <li><a href="#sec-segmentation">6. 長片智慧分段：靜音偵測與 RMS 波谷</a></li>
+        <li><a href="#sec-multimodal">7. Gemini 3.8 Flash 如何「聽懂」單軌混音</a></li>
+        <li><a href="#sec-takeaways">8. 你可以從這個專案學到的工程模式</a></li>
+      </ul>
+    </aside>
+
+    <main>
+      <!-- HERO -->
+      <div class="hero" id="sec-overview">
+        <span class="hero-eyebrow">DEEP DIVE · github.com/sylphlin/multicam-video-preprocessing</span>
+        <h1>多機位影音前處理與 AI 粗剪套件：<br/>原理、技術與音訊理解機制全解析</h1>
+        <p>
+          這是一個專為 Google Antigravity 與 NLE 剪輯軟體（DaVinci Resolve / Premiere / FCP）打造的 <strong>2–6 機位自動化管線</strong>。
+          它將「純數學聲學訊號處理 (DSP)」、「廣播級音訊工程 (EBU R128)」與「多模態 LLM 語意粗剪 (Gemini 3.8 Flash)」嚴格分層，做到 <strong>&lt;0.125ms</strong> 的同步精度與確定性的 EDL 驗證。
+        </p>
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-val">&lt; 0.125 ms</div>
+            <div class="kpi-label">次影格聲學對齊精度（8kHz 單取樣點）</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">-14.0 LUFS</div>
+            <div class="kpi-label">EBU R128 兩階段純線性響度標準化</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">0 外部音訊套件</div>
+            <div class="kpi-label">100% 純 NumPy 實作 MFCC 與 FFT 互相關</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">8 項檢查</div>
+            <div class="kpi-label">確定性 EDL 語意驗證（6 ERROR + 2 WARN）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 2: HOW AGENT KNOWS THE SKILL -->
+      <section id="sec-skill-routing">
+        <div class="sec-header">
+          <span class="sec-num">Section 02 · Skill Discovery &amp; Operational Invariants</span>
+          <h2>Agent 如何知道「何時」與「如何」操作音訊來源？</h2>
+        </div>
+
+        <p>
+          你問了一個非常關鍵的問題：<strong>這個工具如何讓 AI Agent 理解「該使用哪個 Skill、以及該怎麼對音訊來源進行操作」？</strong>
+          答案不在某一段神奇的 AI 推理，而是透過 <strong>Agent Plugins 1.0 三層契約架構</strong>，把「意圖觸發」與「物理音訊演算法」徹底鎖定：
+        </p>
+
+        <div class="grid-3" style="margin-top: 18px;">
+          <div class="card">
+            <div class="pipe-tag">LAYER 1 · 探索層</div>
+            <h3><code>plugin.json</code> &amp; <code>SKILL.md</code></h3>
+            <p style="font-size: 14px; color: var(--text-muted);">
+              <code>SKILL.md</code> 的 YAML Frontmatter 明確宣告 <code>name</code>、<code>description</code> 與關鍵字（<code>audio sync</code>, <code>loudness normalization</code>, <code>multicam</code>, <code>fcp7 xml</code>）。當使用者輸入 <code>/multicam-video-preprocessing</code> 或自然語言提到「同步多機位、標準化響度」時，Agent 會依語意命中並載入該 Skill。
+            </p>
+          </div>
+          <div class="card">
+            <div class="pipe-tag">LAYER 2 · 行為邊界層</div>
+            <h3><code>rules/AGENTS.md</code> 執行鐵律</h3>
+            <p style="font-size: 14px; color: var(--text-muted);">
+              規定 <strong>Strict Read-Only Execution（嚴禁現場自己寫 Python 同步腳本）</strong> 與 <strong>Fail-Fast</strong> 原則。Agent 不能憑記憶自己拼湊 FFmpeg 指令或簡易音量比較，必須直接呼叫 <code>scripts/multicam_pipeline.py</code> 等官方入口，確保聲學演算法 100% 確定性。
+            </p>
+          </div>
+          <div class="card">
+            <div class="pipe-tag">LAYER 3 · 閘門工作流層</div>
+            <h3>3-Stage Gated Runbook</h3>
+            <p style="font-size: 14px; color: var(--text-muted);">
+              <code>SKILL.md</code> 定義了嚴格的三階段閘門（Exit Gate 1/2/3）：每一階段必須驗證產出檔案存在且 <code>&gt; 0 bytes</code>（例如 <code>multicam_sync.json</code> 與 <code>*_synced.mp4</code>），才允許進入下一階段。
+            </p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <div class="callout-title">設計啟示：把「該怎麼做」寫成確定性腳本，把「何時呼叫與判斷」交給 Skill + Gate</div>
+          Agent 並不需要自己「理解」Mel 濾波器或 LUFS 數學公式；它透過 <code>SKILL.md</code> 知道：「只要遇到多機位音訊對齊、響度標準化、粗剪，就必須依序執行 Stage 1 → Gate 1 → Stage 2 → Gate 2 → Stage 3A/3B」，並透過 <code>--strict-sync</code> 與 <code>--strict-edl</code> 讓系統用數學門檻自我把關。
+        </div>
+      </section>
+
+      <!-- SECTION 3: INTERACTIVE PIPELINE -->
+      <section id="sec-pipeline">
+        <div class="sec-header">
+          <span class="sec-num">Section 03 · 3-Stage Gated Architecture</span>
+          <h2>互動式三階段管線探索</h2>
+        </div>
+        <p style="margin-bottom: 16px; color: var(--text-muted);">點擊下方任意階段卡片，查看該階段對「音訊與視訊來源」的具體操作、輸入/輸出與閘門驗證條件：</p>
+
+        <div class="pipeline-flow" id="pipeline-flow">
+          <button class="pipe-node active" data-stage="s1" type="button">
+            <div class="pipe-tag">STAGE 1</div>
+            <div class="pipe-title">聲學對齊與前處理</div>
+            <div class="pipe-sub">multicam_pipeline.py</div>
+          </button>
+          <span class="pipe-arrow">→</span>
+          <button class="pipe-node" data-stage="s2" type="button">
+            <div class="pipe-tag">STAGE 2</div>
+            <div class="pipe-title">AI 多模態粗剪決策</div>
+            <div class="pipe-sub">generate_edl.py</div>
+          </button>
+          <span class="pipe-arrow">→</span>
+          <button class="pipe-node" data-stage="s3a" type="button">
+            <div class="pipe-tag">STAGE 3A (90%)</div>
+            <div class="pipe-title">FCP7 XML 時間軸</div>
+            <div class="pipe-sub">export_fcp7_xml.py</div>
+          </button>
+          <span class="pipe-arrow">/</span>
+          <button class="pipe-node" data-stage="s3b" type="button">
+            <div class="pipe-tag">STAGE 3B (10%)</div>
+            <div class="pipe-title">硬體加速直接渲染</div>
+            <div class="pipe-sub">edl_to_video.py</div>
+          </button>
+        </div>
+
+        <div class="detail-panel" id="stage-detail"></div>
+      </section>
+
+      <!-- SECTION 4: AUDIO SYNC -->
+      <section id="sec-audio-sync">
+        <div class="sec-header">
+          <span class="sec-num">Section 04 · modules/audio_sync.py</span>
+          <h2>音訊對齊核心原理：純 NumPy MFCC + 三階降級 + 次影格微調</h2>
+        </div>
+
+        <p>
+          多機位素材常面臨「不同麥克風增益差異」、「環境空調低頻噪音」、「長片記憶體爆表」三大難題。
+          <code>audio_sync.py</code> 完全不依賴 <code>librosa</code> 或 <code>scipy</code>，僅用 <strong>FFmpeg + 純 NumPy</strong> 就解決了這些問題：
+        </p>
+
+        <div class="grid-2" style="margin: 18px 0;">
+          <div class="card">
+            <h3>1. 三道訊號預處理 (<code>load_and_preprocess_audio</code>)</h3>
+            <ul style="padding-left: 20px; color: var(--text-muted); font-size: 14.5px;">
+              <li><strong>降取樣至 8 kHz 單聲道 PCM</strong>：大幅降低 97.7% 記憶體佔用，同時保留人聲關鍵頻段（≤ 4 kHz）。</li>
+              <li><strong>Zero-mean 去直流偏移</strong>：<code>raw - np.mean(raw)</code> 消除硬體錄音底噪偏置。</li>
+              <li><strong>一階高通差分 (<code>np.diff</code>)</strong>：濾除冷氣/風扇低頻隆隆聲，強化語音子音與拍手打板的瞬態特徵。</li>
+              <li><strong>能量標準化 (Z-score)</strong>：除以標準差，消弭主機與副機的錄音音量差距。</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>2. 為什麼用 MFCC 而不是只用波形？</h3>
+            <ul style="padding-left: 20px; color: var(--text-muted); font-size: 14.5px;">
+              <li>兩台相機距離發話者遠近不同，相位與波形形狀會因空間殘響而扭曲，但<strong>梅爾倒譜特徵 (MFCC)</strong> 反映的是人耳對頻譜包絡的感知，抗殘響能力極強。</li>
+              <li>計算 26-band Mel Filterbank 與 DCT-II 後，<strong>刻意丟棄 <code>c0</code>（能量係數）</strong>，只取 <code>c1..c12</code> 並做 <strong>CMVN（倒譜均值與變異數正規化）</strong>，讓比對完全不受音量大小影響。</li>
+              <li>使用 1D FFT 加速互相關（<code>O(N log N)</code>），並用 <code>f_ref_cache</code> 快取參考機位的 FFT 結果供所有目標機位共用。</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Interactive MFCC Sync Simulator -->
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <h3 style="margin:0;">互動模擬器：MFCC 互相關、BBC 信心度與次影格微調</h3>
+            <span id="sim-badge" class="badge high">✓ Aligned (High Confidence)</span>
+          </div>
+
+          <div class="sim-controls">
+            <div class="control-group">
+              <label>CAM2 真實時間偏移 (Δt) <span class="val" id="val-offset">+2.350 s</span></label>
+              <input type="range" id="ctrl-offset" min="-15" max="15" step="0.05" value="2.35" />
+            </div>
+            <div class="control-group">
+              <label>環境底噪 / 殘響干擾 <span class="val" id="val-noise">15%</span></label>
+              <input type="range" id="ctrl-noise" min="0" max="95" step="5" value="15" />
+            </div>
+            <div class="control-group">
+              <label>掃描策略 (3-Tier Ladder) <span class="val" id="val-tier">自動階梯</span></label>
+              <select id="ctrl-tier" style="width:100%; padding:6px; border-radius:6px; background:var(--bg-code); color:var(--text); border:1px solid var(--border);">
+                <option value="auto">自動 3-Tier 階梯 (120s → Full → Raw)</option>
+                <option value="hop">僅 MFCC Hop 解析度 (16 ms)</option>
+                <option value="subframe" selected>開啟次影格微調 (0.125 ms)</option>
+              </select>
+            </div>
+          </div>
+
+          <canvas class="sim-canvas" id="sync-canvas" width="900" height="240"></canvas>
+
+          <div class="sim-metrics">
+            <div class="metric-box">
+              <div class="m-label">BBC Peak Z-Score</div>
+              <div class="m-val" id="m-zscore">24.8</div>
+            </div>
+            <div class="metric-box">
+              <div class="m-label">計算信心度</div>
+              <div class="m-val" id="m-conf">97.9%</div>
+            </div>
+            <div class="metric-box">
+              <div class="m-label">觸發掃描層級</div>
+              <div class="m-val" id="m-tier" style="font-size:14px;">Tier 1: Fast 120s</div>
+            </div>
+            <div class="metric-box">
+              <div class="m-label">對齊殘差 (Error)</div>
+              <div class="m-val" id="m-err">0.08 ms</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout green">
+          <div class="callout-title">關鍵技術：次影格聲學微調 (<code>refine_offset_subframe</code>)</div>
+          MFCC 的 <code>hop_length = 128</code>（在 8 kHz 下等於 <strong>16 ms</strong> 一幀），若只停在這裡，對齊誤差可能達到半幀影格。因此系統在取得粗略偏移 <code>coarse_offset_sec</code> 後，會利用累積平方和 (<code>cumsum</code>) 在共同重疊區間內找出<strong>能量最高的 5 秒片段</strong>，回到時域對原始高通波形在 <code>±256 samples (±32 ms)</code> 範圍內做 <code>np.correlate(..., mode="valid")</code>，把精準度一舉推進到單一取樣點 <strong>1/8000 秒 = 0.125 ms</strong>！
+        </div>
+      </section>
+
+      <!-- SECTION 5: EBU R128 -->
+      <section id="sec-loudnorm">
+        <div class="sec-header">
+          <span class="sec-num">Section 05 · modules/audio_normalizer.py</span>
+          <h2>響度標準化：為何堅持 Two-Pass 線性增益 (<code>linear=true</code>)？</h2>
+        </div>
+
+        <p>
+          多機位現場常出現「主持人麥克風收音很飽滿，但來賓機位小聲很多」的情況。若直接使用 FFmpeg 的單階段 <code>loudnorm</code>，演算法無法預知整部片的動態範圍，只能啟用動態壓縮器 (Dynamic Mode)，導致安靜處底噪被拉大、說話時又被壓縮，產生明顯的<strong>「呼吸效應 (Pumping Artifact)」</strong>。
+        </p>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="tabs" data-tab-group="loudnorm">
+            <button class="tab-btn active" data-tab="ln-2pass" type="button">Two-Pass 線性模式（本專案採用）</button>
+            <button class="tab-btn" data-tab="ln-1pass" type="button">Single-Pass 動態模式（僅作 Fallback）</button>
+          </div>
+          <div class="tab-pane active" id="ln-2pass">
+            <p><strong>Pass 1（Null-Sink 聲學掃描）</strong>：快速解碼音軌至 <code>-f null -</code>，透過 <code>print_format=json</code> 取得全片真實聲學統計：<code>input_i</code> (整合響度)、<code>input_lra</code> (響度範圍)、<code>input_tp</code> (真實峰值)、<code>input_thresh</code> 與 <code>target_offset</code>。</p>
+            <p><strong>Pass 2（純線性增益平移）</strong>：將量測結果回傳給 <code>loudnorm</code> 並加上 <code>linear=true</code>，對整條音軌套用恆定的線性增益推升至 <strong>-14.0 LUFS</strong>（YouTube / 廣播標準，<code>LRA=11.0</code>, <code>TP=-1.5 dBTP</code>），<strong>完全保留原始人聲的動態起伏與自然質感</strong>。</p>
+          </div>
+          <div class="tab-pane" id="ln-1pass">
+            <p>僅當 Pass 1 的 JSON 正則解析失敗時才會退回單階段動態模式。因為缺少全片先驗數據，FFmpeg 會即時進行 AGC 動態壓縮，容易把句間換氣與空調底噪拉高，不適合專業訪談母帶。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6: SEGMENTATION -->
+      <section id="sec-segmentation">
+        <div class="sec-header">
+          <span class="sec-num">Section 06 · modules/video_segmenter.py</span>
+          <h2>長片智慧分段：如何用音訊「找自然換氣點」？</h2>
+        </div>
+        <p>
+          當多機位網格影片超過 <strong>40 分鐘（2400 秒）</strong>，單次送入 Gemini 推論容易觸發 Gateway 超時或思考預算不足。
+          但如果在講話講到一半時硬切，AI 就會失去前後文語意！<code>video_segmenter.py</code> 因此設計了一套<strong>音訊靜音感知分段器</strong>：
+        </p>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="sim-controls">
+            <div class="control-group">
+              <label>模擬影片總長度 <span class="val" id="val-dur">75 分鐘 (4500s)</span></label>
+              <input type="range" id="ctrl-dur" min="20" max="150" step="5" value="75" />
+            </div>
+            <div class="control-group">
+              <label>每段目標區間 (min ~ max)</label>
+              <div style="font-family:var(--font-mono); font-size:13px; color:var(--accent); padding-top:6px;">
+                1800s – 2400s (30–40 分鐘)
+              </div>
+            </div>
+          </div>
+
+          <div id="seg-visual" style="background:var(--bg-code); border:1px solid var(--border); border-radius:10px; padding:16px;"></div>
+          <p id="seg-explain" style="font-size:14px; color:var(--text-muted); margin-top:12px;"></p>
+        </div>
+
+        <div class="accordion-item" style="margin-top: 16px;">
+          <button class="accordion-btn" type="button">
+            <span>深入細節：<code>silencedetect</code> 評分公式與 RMS 波谷備援機制</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            <p>1. 在每個理論等分點 <code>nominal_cut</code> 的 <code>±300 秒</code> 視窗內，先執行 FFmpeg <code>silencedetect=noise=-30dB:d=0.5</code>，只掃描該局部視窗（不掃全片）。</p>
+            <p>2. 候選靜音區間的排序成本函數為：<code>abs(mid - nominal_cut) - min(duration, 3.0) * 15.0</code> —— 優先挑選「靠近理想中點」且「停頓較長（最高獎勵 45 秒權重）」的自然換氣點。</p>
+            <p>3. 若現場背景音樂或吵雜導致找不到 <code>-30dB</code> 靜音，系統自動降級至 <code>find_rms_energy_minimum()</code>：以 8 kHz 單聲道、0.5 秒滑動視窗計算均方根能量 (RMS)，找出能量最低的波谷切分，並四捨五入至 0.1 秒以對齊 10 fps / 1s GOP 邊界。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 7: MULTIMODAL -->
+      <section id="sec-multimodal">
+        <div class="sec-header">
+          <span class="sec-num">Section 07 · generate_edl.py &amp; edl_interview_template.md</span>
+          <h2>當畫面合併成單一混音軌後，Gemini 3.8 Flash 如何剪輯？</h2>
+        </div>
+
+        <p>
+          在 Stage 1 最後產出的 <code>multicam_merged_full.mp4</code> 只有<strong>單一混音音軌</strong>（取自 <code>0:a?</code> 同步後的標準化參考音軌），搭配 10 fps、左上角印有 <code>CAM1..CAMn</code> 標籤的網格畫面。Stage 2 的提示詞工程設計了三個非常聰明的約束：
+        </p>
+
+        <div class="grid-2" style="margin-top: 16px;">
+          <div class="card">
+            <h3>1. 跨模態聲線與嘴型校準</h3>
+            <p style="font-size: 14.5px; color: var(--text-muted);">
+              在「第零階段」過後，模型會建立 <strong>聲線特徵（音色、語調）↔ 網格畫面嘴型動作 ↔ 機位標籤 (CAM1..CAMn)</strong> 的對應表。只要某角色持續發話，鏡頭鎖定率達 90% 以上；1–2 秒的「嗯、對」短附和則會被過濾，避免零碎跳切。
+            </p>
+          </div>
+          <div class="card">
+            <h3>2. 不對稱安全邊界 (Asymmetric Safety Margin)</h3>
+            <p style="font-size: 14.5px; color: var(--text-muted);">
+              針對片頭「5, 4, 3, 2, 1」或「Ready Action」倒數，Prompt 強制要求 <strong>寧可延後 0.2–0.5 秒緊貼正片首字起剪 (Late Cut)</strong>，也絕不提早切入半個倒數音節，並要求模型自我校驗 <code>[Global_Start_Time, Global_Start_Time + 2.0s]</code> 區間。
+            </p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 18px;">
+          <h3>3. 動態思考預算 (<code>calculate_dynamic_thinking_budget</code>) 與 8 項 EDL 驗證</h3>
+          <p style="font-size: 14.5px; color: var(--text-muted);">
+            為了避免長影片推論超過 Vertex AI 的 300 秒閘道限制，<code>generate_edl.py</code> 會根據影片長度估算 Prefill 時間，在 <strong>1024 ～ 4096 tokens</strong> 之間動態分配 <code>thinking_budget</code>，並預設使用 <code>MEDIA_RESOLUTION_LOW</code>。產出 CSV 前後皆會通過 <code>edl_validator.py</code> 的 8 項結構檢查：
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>等級</th><th>檢查代碼</th><th>偵測內容</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="badge low">ERROR</span></td><td><code>E_NO_ROWS</code> / <code>E_PARSE_TIME</code></td><td>EDL 無有效資料列，或時間戳格式無法解析</td></tr>
+                <tr><td><span class="badge low">ERROR</span></td><td><code>E_NEGATIVE_DURATION</code> / <code>E_NON_MONOTONIC</code></td><td>結束時間 ≤ 開始時間，或時間軸倒退</td></tr>
+                <tr><td><span class="badge low">ERROR</span></td><td><code>E_OVERLAP</code> / <code>E_EMPTY_CAMERA</code></td><td>相鄰片段時間重疊，或未指定目標機位</td></tr>
+                <tr><td><span class="badge med">WARN</span></td><td><code>W_UNKNOWN_CAMERA</code> / <code>W_GAP</code></td><td>機位名稱不在白名單內，或片段間存在 &gt; 0.05s 空隙</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 8: TAKEAWAYS -->
+      <section id="sec-takeaways">
+        <div class="sec-header">
+          <span class="sec-num">Section 08 · Engineering Takeaways</span>
+          <h2>你可以從這個專案學到的 5 個高價值工程設計</h2>
+        </div>
+
+        <div class="accordion-item open">
+          <button class="accordion-btn" type="button">
+            <span>1. AI 做「語意決策」，確定性程式碼做「物理訊號與時間軸」</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            千萬不要讓 LLM 去算時間偏移量或自己切影片。這個專案把毫秒級同步 (<code>audio_sync.py</code>)、響度計算 (<code>audio_normalizer.py</code>) 與 NLE 時間軸轉換 (<code>export_fcp7_xml.py</code>) 全部交給確定性 Python + FFmpeg，只把「誰在說話、該切哪一機、哪裡是廢料」交給 Gemini 3.8 Flash。
+          </div>
+        </div>
+
+        <div class="accordion-item">
+          <button class="accordion-btn" type="button">
+            <span>2. 用純 NumPy 實作 DSP，換取極致的零依賴可攜性</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            在 <code>audio_sync.py</code> 中，作者自己寫了 <code>mel_filterbank()</code> 與 <code>dct2_matrix()</code>（合計不到 50 行），避開了 <code>librosa</code> / <code>numba</code> / <code>llvmlite</code> 在不同 macOS/Linux 環境的編譯地獄，同時讓記憶體驗證與測試變得極為輕量。
+          </div>
+        </div>
+
+        <div class="accordion-item">
+          <button class="accordion-btn" type="button">
+            <span>3. 專為 LLM 設計的「低成本代理影片 (Proxy Video)」格式</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            <code>multicam_merged_full.mp4</code> 刻意壓低為 <code>10 fps</code>、<code>1200k</code>、<code>1s GOP (-g 10)</code> 與 <code>16 kHz</code> 單聲道音訊。這不僅大幅節省多模態 Token 與 GCS 上傳頻寬，<code>1s GOP</code> 更讓長片需要切分時能直接用 <code>-c copy</code> 在秒級完成無損切割。
+          </div>
+        </div>
+
+        <div class="accordion-item">
+          <button class="accordion-btn" type="button">
+            <span>4. 錯誤也要「先落盤再退出」的可觀測性習慣</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            即使開啟 <code>--strict-edl</code> 並偵測到嚴重錯誤，<code>generate_edl.py</code> 依然會先把壞掉的 CSV 與驗證報告寫入磁碟才以 Exit Code 1 退出，方便工程師或 Agent 事後檢視 (Post-mortem)，同時用 <code>finally</code> 區塊保證雲端與本地暫存切片一定被清除。
+          </div>
+        </div>
+
+        <div class="accordion-item">
+          <button class="accordion-btn" type="button">
+            <span>5. Agentic Skill 的防呆邊界 (Operational Invariants)</span>
+            <span class="acc-icon">▼</span>
+          </button>
+          <div class="accordion-body">
+            透過 <code>rules/AGENTS.md</code> 明確禁止 Agent「自行撰寫臨時腳本」或「竄改 Skill 原始碼」，並強制要求 60 秒長任務回報進度與 Exit Gate 檔案檢查，這是目前建構生產級 AI Coding Skill 最穩健的範本之一。
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 1. Theme Toggle
+    const themeBtn = document.getElementById("theme-toggle");
+    themeBtn.addEventListener("click", () => {
+      const root = document.documentElement;
+      const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      drawSyncSim();
+    });
+
+    // 2. Scroll Progress & TOC Active State
+    const progressBar = document.getElementById("progress-bar");
+    const tocLinks = Array.from(document.querySelectorAll("#toc-list a"));
+    const sections = tocLinks.map(a => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+
+    window.addEventListener("scroll", () => {
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      const pct = docH > 0 ? (window.scrollY / docH) * 100 : 0;
+      progressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+
+      let currentId = sections[0]?.id;
+      for (const sec of sections) {
+        if (sec.getBoundingClientRect().top <= 130) currentId = sec.id;
+      }
+      tocLinks.forEach(a => {
+        a.classList.toggle("active", a.getAttribute("href") === `#${currentId}`);
+      });
+    }, { passive: true });
+
+    // 3. Interactive 3-Stage Pipeline Explorer
+    const stageData = {
+      s1: {
+        title: "Stage 1：多機位聲學對齊、響度標準化與網格合成",
+        script: "scripts/multicam_pipeline.py --ref CAM1.mp4 --targets CAM2.mp4 --normalize --merge -o ./output",
+        audioOps: [
+          "1. 抽取 8 kHz 單聲道 PCM，進行 Zero-mean + 一階高通差分 + Z-score 標準化。",
+          "2. 純 NumPy 計算 26-band Mel / 13 維 MFCC（移除 c0 並做 CMVN），執行 3-Tier 互相關與 0.125ms 次影格微調。",
+          "3. 若啟用 --normalize，執行 EBU R128 兩階段線性標準化至 -14.0 LUFS（獨立 .m4a 音軌後再與視訊混流）。"
+        ],
+        gate: "Exit Gate 1：必須產出 multicam_sync.json、各機位 *_synced.mp4 同步母帶，以及 10fps/1s GOP 的 multicam_merged_full.mp4。"
+      },
+      s2: {
+        title: "Stage 2：靜音感知智慧分段與 Gemini 3.8 Flash 粗剪",
+        script: "scripts/generate_edl.py -v ./output/multicam_merged_full.mp4 --strict-edl --lang zh-TW",
+        audioOps: [
+          "1. 若影片 > 40 分鐘，於 30–40 分鐘視窗的 ±300s 內用 FFmpeg silencedetect (-30dB, d=0.5) 尋找自然停頓；無靜音時退回 0.5s RMS 能量波谷。",
+          "2. 透過 Vertex AI ADC + GCS 快取上傳，以 MEDIA_RESOLUTION_LOW 與動態 thinking_budget (1024–4096) 分析單軌混音與嘴型。",
+          "3. 套用不對稱安全邊界剔除開拍倒數，並由 edl_validator.py 執行 8 項結構檢查。"
+        ],
+        gate: "Exit Gate 2：必須產出非空的 edl_full.csv（0 ERROR）與 edl_full_report.md，並在 finally 清除暫存切片。"
+      },
+      s3a: {
+        title: "Stage 3A（主要路徑 90%）：匯出專業 NLE FCP7 XML 時間軸",
+        script: "scripts/export_fcp7_xml.py -d ./output -o ./output/final_cut_full.xml --strict-edl --lang zh-TW",
+        audioOps: [
+          "1. 載入 edl_full.csv 並再次執行 8 項 EDL 驗證。",
+          "2. 以 1:1 絕對時間碼連結已對齊且標準化至 -14 LUFS 的 CAM*_synced.mp4 母帶。",
+          "3. 支援 NTSC 分數影格率（23.976, 29.97, 59.94）與 Drop-Frame 時間碼，可直接匯入 DaVinci Resolve / Premiere / FCP。"
+        ],
+        gate: "Exit Gate 3A：final_cut_full.xml 存在且 > 0 bytes（同時主動詢問使用者是否需執行 Stage 3B 輸出預覽 MP4）。"
+      },
+      s3b: {
+        title: "Stage 3B（次要路徑 10%）：單次硬體加速直接渲染 MP4",
+        script: "scripts/edl_to_video.py --edl ./output/edl_full.csv --media-dir ./output -o ./output/final_cut_full.mp4 --strict-edl",
+        audioOps: [
+          "1. 依 edl_full.csv 的起訖時間與 Best_Camera，直接從 *_synced.mp4 同步母帶擷取對應片段。",
+          "2. 優先使用 h264_videotoolbox 硬體編碼（失敗自動降級 libx264）單次拼接渲染成可播放成片。"
+        ],
+        gate: "Exit Gate 3B：final_cut_full.mp4 存在且時長 > 0 秒。"
+      }
+    };
+
+    const stageDetail = document.getElementById("stage-detail");
+    function renderStage(key) {
+      const d = stageData[key];
+      stageDetail.innerHTML = `
+        <h3 style="margin-top:0;">${d.title}</h3>
+        <pre>${d.script}</pre>
+        <div style="margin:12px 0;">
+          <strong style="font-size:13.5px; color:var(--accent);">音訊與資料處理重點：</strong>
+          <ul style="padding-left:20px; margin-top:6px; color:var(--text-muted); font-size:14.5px;">
+            ${d.audioOps.map(item => `<li>${item}</li>`).join("")}
+          </ul>
+        </div>
+        <div class="callout green" style="margin:12px 0 0;">
+          <div class="callout-title">${d.gate}</div>
+        </div>
+      `;
+    }
+    document.querySelectorAll("#pipeline-flow .pipe-node").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#pipeline-flow .pipe-node").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderStage(btn.dataset.stage);
+      });
+    });
+    renderStage("s1");
+
+    // 4. Interactive Audio Sync Canvas Simulator
+    const ctrlOffset = document.getElementById("ctrl-offset");
+    const ctrlNoise = document.getElementById("ctrl-noise");
+    const ctrlTier = document.getElementById("ctrl-tier");
+    const syncCanvas = document.getElementById("sync-canvas");
+    const ctx = syncCanvas.getContext("2d");
+
+    function drawSyncSim() {
+      const offset = parseFloat(ctrlOffset.value);
+      const noisePct = parseFloat(ctrlNoise.value);
+      const mode = ctrlTier.value;
+
+      document.getElementById("val-offset").textContent = `${offset >= 0 ? "+" : ""}${offset.toFixed(2)} s`;
+      document.getElementById("val-noise").textContent = `${noisePct}%`;
+      document.getElementById("val-tier").textContent =
+        mode === "hop" ? "Hop-Level (16ms)" : mode === "subframe" ? "Subframe (0.125ms)" : "自動階梯";
+
+      // Simulated BBC Z-Score & Tier
+      const noiseFactor = noisePct / 100;
+      const baseZ = 29.0 * Math.pow(1 - noiseFactor * 0.78, 1.4);
+      const zScore = Math.max(2.1, baseZ);
+
+      let conf = 0;
+      if (zScore >= 25.0) conf = Math.min(99.9, 98.0 + (zScore - 25.0) * 0.05);
+      else if (zScore >= 12.0) conf = 90.0 + (zScore - 12.0) * (8.0 / 13.0);
+      else if (zScore >= 7.0) conf = 70.0 + (zScore - 7.0) * (20.0 / 5.0);
+      else if (zScore >= 4.0) conf = 40.0 + (zScore - 4.0) * (30.0 / 3.0);
+      else conf = Math.max(0.0, zScore * 10.0);
+
+      let tierText = "Tier 1: Fast 120s";
+      if (zScore < 7.0) tierText = "Tier 3: Raw FFT Fallback";
+      else if (zScore < 12.0 || Math.abs(offset) > 10.5) tierText = "Tier 2: Full MFCC";
+
+      const errMs = mode === "hop" ? (4.0 + noiseFactor * 8.0) : (0.04 + noiseFactor * 0.08);
+
+      document.getElementById("m-zscore").textContent = zScore.toFixed(1);
+      document.getElementById("m-conf").textContent = `${conf.toFixed(1)}%`;
+      document.getElementById("m-tier").textContent = tierText;
+      document.getElementById("m-err").textContent = `${errMs.toFixed(2)} ms`;
+
+      const badge = document.getElementById("sim-badge");
+      if (zScore >= 12.0) {
+        badge.className = "badge high";
+        badge.textContent = "✓ Aligned (High Confidence · Z ≥ 12.0)";
+      } else if (zScore >= 7.0) {
+        badge.className = "badge med";
+        badge.textContent = "ℹ Aligned (Marginal · 7.0 ≤ Z < 12.0)";
+      } else {
+        badge.className = "badge low";
+        badge.textContent = "⚠️ LOW CONFIDENCE (Z < 7.0 · --strict-sync 觸發)";
+      }
+
+      // Draw Cross-Correlation Curve
+      const w = syncCanvas.width;
+      const h = syncCanvas.height;
+      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      ctx.clearRect(0, 0, w, h);
+
+      // Grid lines
+      ctx.strokeStyle = isDark ? "rgba(148,163,184,0.12)" : "rgba(15,23,42,0.08)";
+      ctx.lineWidth = 1;
+      for (let gx = 0; gx <= w; gx += w / 6) {
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+      }
+      const zeroY = h - 36;
+      ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(w, zeroY); ctx.stroke();
+
+      // Peak position mapped from [-15, 15] -> [60, w-60]
+      const peakX = 60 + ((offset + 15) / 30) * (w - 120);
+      const peakAmp = Math.min(h - 65, (zScore / 30) * (h - 70) + 18);
+
+      ctx.beginPath();
+      ctx.strokeStyle = isDark ? "#38bdf8" : "#0284c7";
+      ctx.lineWidth = 2.5;
+
+      for (let x = 0; x < w; x += 3) {
+        const dist = Math.abs(x - peakX);
+        const lobe = peakAmp * Math.exp(-(dist * dist) / (mode === "hop" ? 360 : 120));
+        const pseudoNoise = Math.sin(x * 0.23) * Math.cos(x * 0.11) * (4 + noiseFactor * 26);
+        const y = zeroY - Math.max(0, lobe + Math.abs(pseudoNoise));
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Peak marker
+      ctx.fillStyle = zScore >= 12 ? "#34d399" : zScore >= 7 ? "#fbbf24" : "#f87171";
+      ctx.beginPath();
+      ctx.arc(peakX, zeroY - peakAmp, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = "12px monospace";
+      ctx.fillStyle = isDark ? "#e6edf7" : "#0f172a";
+      ctx.fillText(`Peak Δt = ${offset >= 0 ? "+" : ""}${offset.toFixed(2)}s (Z=${zScore.toFixed(1)})`, Math.min(w - 220, Math.max(12, peakX - 80)), Math.max(22, zeroY - peakAmp - 14));
+      ctx.fillStyle = isDark ? "#94a3b8" : "#475569";
+      ctx.fillText("-15s", 14, h - 12);
+      ctx.fillText("0s (同步點)", w / 2 - 36, h - 12);
+      ctx.fillText("+15s", w - 48, h - 12);
+    }
+
+    [ctrlOffset, ctrlNoise, ctrlTier].forEach(el => el.addEventListener("input", drawSyncSim));
+    drawSyncSim();
+
+    // 5. Loudnorm Tabs
+    document.querySelectorAll("[data-tab-group='loudnorm'] .tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const group = btn.parentElement;
+        group.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        ["ln-2pass", "ln-1pass"].forEach(id => {
+          document.getElementById(id).classList.toggle("active", id === btn.dataset.tab);
+        });
+      });
+    });
+
+    // 6. Silence-Aware Segmentation Visualizer
+    const ctrlDur = document.getElementById("ctrl-dur");
+    const segVisual = document.getElementById("seg-visual");
+    const segExplain = document.getElementById("seg-explain");
+
+    function updateSegmentation() {
+      const mins = parseInt(ctrlDur.value, 10);
+      const secs = mins * 60;
+      document.getElementById("val-dur").textContent = `${mins} 分鐘 (${secs}s)`;
+
+      if (secs <= 2400) {
+        segVisual.innerHTML = `
+          <div style="display:flex; height:40px; border-radius:8px; overflow:hidden; border:1px solid var(--accent);">
+            <div style="flex:1; background:var(--accent-soft); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:13px; color:var(--accent); font-weight:700;">
+              Part 1 / 1（零切分單次推論：00:00 → ${mins}:00）
+            </div>
+          </div>
+        `;
+        segExplain.textContent = `總長 ${secs} 秒 ≤ 2400 秒（40 分鐘），不觸發分段，直接整片送入 Gemini 3.8 Flash 單次推論。`;
+        return;
+      }
+
+      const targetDur = (1800 + 2400) / 2; // 2100s
+      let numParts = Math.max(1, Math.round(secs / targetDur));
+      if (numParts === 1 && secs > 2400) numParts = 2;
+      const avgPartMin = (mins / numParts).toFixed(1);
+
+      let html = `<div style="display:flex; gap:6px; height:44px;">`;
+      for (let i = 1; i <= numParts; i++) {
+        html += `
+          <div style="flex:1; background:var(--accent-soft); border:1px solid var(--accent); border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:12px;">
+            <strong style="color:var(--accent);">Part ${i}/${numParts}</strong>
+            <span style="color:var(--text-muted); font-size:11px;">~${avgPartMin} min</span>
+          </div>
+        `;
+      }
+      html += `</div>`;
+      segVisual.innerHTML = html;
+      segExplain.textContent = `總長超過 40 分鐘，系統自動均分為 ${numParts} 段（每段約 ${avgPartMin} 分鐘，避免結尾殘留過短片段）。系統會在 ${numParts - 1} 個理論切點的 ±300 秒視窗內以 silencedetect (-30dB) 找自然停頓點無損切分，平行推論後再縫合回單一 edl_full.csv。`;
+    }
+    ctrlDur.addEventListener("input", updateSegmentation);
+    updateSegmentation();
+
+    // 7. Accordions
+    document.querySelectorAll(".accordion-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        btn.parentElement.classList.toggle("open");
+      });
+    });
+  </script>
+</body>
+</html>
